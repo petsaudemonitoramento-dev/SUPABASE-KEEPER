@@ -43,8 +43,8 @@ export async function registerUser({ email, password, signupCode }) {
 
   const normalized = normalizeEmail(email);
   if (!validateEmail(normalized)) throw new Error("Informe um e-mail válido.");
-  if (String(password || "").length < 12) {
-    throw new Error("A senha precisa ter pelo menos 12 caracteres.");
+  if (String(password || "").length < 8) {
+    throw new Error("A senha precisa ter pelo menos 8 caracteres.");
   }
 
   const sql = db();
