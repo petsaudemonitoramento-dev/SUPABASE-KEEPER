@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
-import { Client } from "@neondatabase/serverless";
+import pg from "pg";
 
+const { Client } = pg;
 const databaseUrl = process.env.DATABASE_URL;
 
 if (!databaseUrl) {
@@ -8,12 +9,16 @@ if (!databaseUrl) {
 }
 
 const schema = await fs.readFile(new URL("../neon/schema.sql", import.meta.url), "utf8");
-const client = new Client(databaseUrl);
+
+const client = new Client({
+  connectionString: databaseUrl
+});
 
 await client.connect();
 
 try {
   await client.query(schema);
+
   const result = await client.query(`
     select table_name
     from information_schema.tables
