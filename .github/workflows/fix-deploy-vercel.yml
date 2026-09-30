@@ -38,7 +38,7 @@ jobs:
         run: vercel link --yes --project supabase-keeper --scope luccaaraujo17s-projects --token="$VERCEL_TOKEN"
 
       - name: Fix project settings
-        run: vercel project update supabase-keeper --framework nextjs --auto-detect output-directory --token="$VERCEL_TOKEN"
+        run: vercel project update supabase-keeper --framework nextjs --auto-detect output-directory --yes --token="$VERCEL_TOKEN"
 
       - name: Pull project settings
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
