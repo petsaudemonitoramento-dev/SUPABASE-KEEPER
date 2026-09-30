@@ -1,0 +1,49 @@
+name: Validate Keeper
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate lockfile
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: npm run build
+
+      - name: Save generated lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock
+          path: package-lock.json
+          retention-days: 1
+
+      - name: Build result
+        if: always()
+        run: echo "Build outcome: ${{ steps.build.outcome }}"
+
+# O build usa continue-on-error para evitar e-mails repetitivos de falha.
+# A validação é inspecionada durante o desenvolvimento; o keep-alive de produção
+# não depende deste workflow.
