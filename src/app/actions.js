@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser, loginUser, logoutUser, registerUser } from "@/lib/auth";
 import { encryptValue } from "@/lib/crypto";
+import { db } from "@/lib/db";
 import { getProjectForUser, pingAndRecord } from "@/lib/keeper";
-import { getAdminClient } from "@/lib/supabase-admin";
 import {
   normalizeProjectUrl,
   validateProjectName,
@@ -73,27 +73,33 @@ export async function createProjectAction(formData) {
     const name = validateProjectName(formData.get("name"));
     const projectUrl = normalizeProjectUrl(formData.get("project_url"));
     const publishableKey = validatePublishableKey(formData.get("publishable_key"));
-    const admin = getAdminClient();
+    const sql = db();
 
-    const { data, error } = await admin
-      .from("keeper_projects")
-      .insert({
-        user_id: user.id,
-        name,
-        project_url: projectUrl,
-        key_ciphertext: encryptValue(publishableKey)
-      })
-      .select("*")
-      .single();
-
-    if (error) {
-      if (error.code === "23505") {
+    let rows;
+    try {
+      rows = await sql`
+        insert into keeper_projects (
+          user_id,
+          name,
+          project_url,
+          key_ciphertext
+        )
+        values (
+          ${user.id},
+          ${name},
+          ${projectUrl},
+          ${encryptValue(publishableKey)}
+        )
+        returning *
+      `;
+    } catch (error) {
+      if (error?.code === "23505") {
         throw new Error("Este projeto já está cadastrado na sua conta.");
       }
       throw new Error("Não foi possível cadastrar o projeto.");
     }
 
-    project = data;
+    project = rows[0];
 
     try {
       await pingAndRecord(project, "manual");
@@ -133,15 +139,15 @@ export async function toggleProjectAction(formData) {
 
   if (!project) redirect("/dashboard");
 
-  const admin = getAdminClient();
-  await admin
-    .from("keeper_projects")
-    .update({
-      enabled: !project.enabled,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", project.id)
-    .eq("user_id", user.id);
+  const sql = db();
+  await sql`
+    update keeper_projects
+    set
+      enabled = ${!project.enabled},
+      updated_at = now()
+    where id = ${project.id}
+      and user_id = ${user.id}
+  `;
 
   revalidatePath("/dashboard");
   revalidatePath(`/projects/${projectId}`);
@@ -160,25 +166,32 @@ export async function updateProjectAction(formData) {
     const name = validateProjectName(formData.get("name"));
     const projectUrl = normalizeProjectUrl(formData.get("project_url"));
     const newKeyRaw = String(formData.get("publishable_key") || "").trim();
-
-    const changes = {
-      name,
-      project_url: projectUrl,
-      updated_at: new Date().toISOString()
-    };
+    const sql = db();
 
     if (newKeyRaw) {
-      changes.key_ciphertext = encryptValue(validatePublishableKey(newKeyRaw));
+      const encryptedKey = encryptValue(validatePublishableKey(newKeyRaw));
+
+      await sql`
+        update keeper_projects
+        set
+          name = ${name},
+          project_url = ${projectUrl},
+          key_ciphertext = ${encryptedKey},
+          updated_at = now()
+        where id = ${project.id}
+          and user_id = ${user.id}
+      `;
+    } else {
+      await sql`
+        update keeper_projects
+        set
+          name = ${name},
+          project_url = ${projectUrl},
+          updated_at = now()
+        where id = ${project.id}
+          and user_id = ${user.id}
+      `;
     }
-
-    const admin = getAdminClient();
-    const { error } = await admin
-      .from("keeper_projects")
-      .update(changes)
-      .eq("id", project.id)
-      .eq("user_id", user.id);
-
-    if (error) throw new Error("Não foi possível salvar as alterações.");
   } catch (error) {
     errorMessage = messageOf(error);
   }
@@ -199,12 +212,12 @@ export async function deleteProjectAction(formData) {
 
   if (!project) redirect("/dashboard");
 
-  const admin = getAdminClient();
-  await admin
-    .from("keeper_projects")
-    .delete()
-    .eq("id", project.id)
-    .eq("user_id", user.id);
+  const sql = db();
+  await sql`
+    delete from keeper_projects
+    where id = ${project.id}
+      and user_id = ${user.id}
+  `;
 
   revalidatePath("/dashboard");
   redirect("/dashboard?deleted=1");
