@@ -23,3 +23,6 @@ pnpm-debug.log*
 # os
 .DS_Store
 Thumbs.db
+
+# neon local project context
+.neon
