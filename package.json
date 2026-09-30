@@ -12,7 +12,8 @@
     "@neondatabase/serverless": "1.1.0",
     "next": "16.3.7",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "@neon/env": "1.4.7"
   },
   "engines": {
     "node": ">=20.19.0"
