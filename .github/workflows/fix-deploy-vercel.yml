@@ -48,3 +48,12 @@ jobs:
 
       - name: Deploy
         run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+      - name: Make production publicly reachable
+        run: |
+          curl --fail-with-body --silent --show-error \
+            --request PATCH \
+            --url "https://api.vercel.com/v9/projects/supabase-keeper?slug=luccaaraujo17s-projects" \
+            --header "Authorization: Bearer $VERCEL_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{"ssoProtection":null}' >/dev/null
