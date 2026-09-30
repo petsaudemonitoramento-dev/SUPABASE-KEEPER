@@ -42,7 +42,8 @@ jobs:
 
       - name: Build result
         if: always()
-        run: echo "Build outcome: ${{ steps.build.outcome }}"
+        run: |
+          echo "Build outcome: ${{ steps.build.outcome }}"
 
 # O build usa continue-on-error para evitar e-mails repetitivos de falha.
 # A validação é inspecionada durante o desenvolvimento; o keep-alive de produção
