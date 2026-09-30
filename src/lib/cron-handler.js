@@ -1,8 +1,18 @@
-import { requiredEnv } from "@/lib/env";
 import { runScheduledKeepAlive } from "@/lib/keeper";
 
 export async function handleCron(request) {
-  const expected = `Bearer ${requiredEnv("CRON_SECRET")}`;
+  const secret = process.env.CRON_SECRET;
+
+  if (!secret) {
+    console.error("keeper cron error: CRON_SECRET not configured");
+    return Response.json({
+      ok: false,
+      schedulerError: true,
+      reason: "cron_not_configured"
+    });
+  }
+
+  const expected = `Bearer ${secret}`;
   const received = request.headers.get("authorization");
 
   if (received !== expected) {
@@ -19,8 +29,8 @@ export async function handleCron(request) {
       ...result
     });
   } catch (error) {
-    // Evita transformar indisponibilidades temporárias em uma cadeia de
-    // notificações de falha do scheduler.
+    // Erros globais também retornam 200 ao scheduler para evitar uma sequência
+    // de notificações externas. O detalhe técnico continua disponível nos logs.
     console.error("keeper cron error", error instanceof Error ? error.message : "unknown");
 
     return Response.json({
