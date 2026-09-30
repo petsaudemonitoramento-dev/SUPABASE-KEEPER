@@ -17,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      KEEPER_SIGNUP_CODE: ${{ secrets.KEEPER_SIGNUP_CODE }}
 
     steps:
       - name: Checkout
@@ -39,6 +40,13 @@ jobs:
 
       - name: Fix project settings
         run: vercel project update supabase-keeper --framework nextjs --auto-detect output-directory --yes --token="$VERCEL_TOKEN"
+
+      - name: Sync signup code
+        shell: bash
+        run: |
+          test -n "$KEEPER_SIGNUP_CODE" || (echo "Missing KEEPER_SIGNUP_CODE" && exit 1)
+          vercel env rm KEEPER_SIGNUP_CODE production --yes --token="$VERCEL_TOKEN" || true
+          printf '%s' "$KEEPER_SIGNUP_CODE" | vercel env add KEEPER_SIGNUP_CODE production --sensitive --token="$VERCEL_TOKEN"
 
       - name: Pull project settings
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
