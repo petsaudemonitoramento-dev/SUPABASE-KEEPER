@@ -1,81 +1,119 @@
-import { getAdminClient } from "@/lib/supabase-admin";
+import { db } from "@/lib/db";
 import { decryptValue } from "@/lib/crypto";
 import { pingSupabase } from "@/lib/ping";
 
 export async function getProjectsForUser(userId) {
-  const admin = getAdminClient();
-  const { data, error } = await admin
-    .from("keeper_projects")
-    .select("id,name,project_url,enabled,last_status,last_ping_at,last_success_at,last_latency_ms,last_http_status,last_error,consecutive_failures,created_at,updated_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true });
+  const sql = db();
 
-  if (error) throw new Error("Não foi possível carregar os projetos.");
-  return data || [];
+  return sql`
+    select
+      id,
+      name,
+      project_url,
+      enabled,
+      last_status,
+      last_ping_at,
+      last_success_at,
+      last_latency_ms,
+      last_http_status,
+      last_error,
+      consecutive_failures,
+      created_at,
+      updated_at
+    from keeper_projects
+    where user_id = ${userId}
+    order by created_at asc
+  `;
 }
 
 export async function getProjectForUser(userId, projectId) {
-  const admin = getAdminClient();
-  const { data, error } = await admin
-    .from("keeper_projects")
-    .select("*")
-    .eq("id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
+  const sql = db();
+  const rows = await sql`
+    select *
+    from keeper_projects
+    where id = ${projectId}
+      and user_id = ${userId}
+    limit 1
+  `;
 
-  if (error) throw new Error("Não foi possível carregar o projeto.");
-  return data || null;
+  return rows[0] || null;
 }
 
 export async function getLogsForUser(userId, projectId, limit = 40) {
-  const admin = getAdminClient();
-  const { data, error } = await admin
-    .from("keeper_ping_logs")
-    .select("id,status,source,latency_ms,http_status,error_message,created_at")
-    .eq("user_id", userId)
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const sql = db();
+  const safeLimit = Math.min(Math.max(Number(limit) || 40, 1), 100);
 
-  if (error) throw new Error("Não foi possível carregar o histórico.");
-  return data || [];
+  return sql`
+    select
+      id,
+      status,
+      source,
+      latency_ms,
+      http_status,
+      error_message,
+      created_at
+    from keeper_ping_logs
+    where user_id = ${userId}
+      and project_id = ${projectId}
+    order by created_at desc
+    limit ${safeLimit}
+  `;
 }
 
 export async function recordPing(project, result, source) {
-  const admin = getAdminClient();
-  const now = new Date().toISOString();
+  const sql = db();
   const status = result.ok ? "online" : "error";
+  const failures = result.ok ? 0 : (project.consecutive_failures || 0) + 1;
 
-  const { error: logError } = await admin.from("keeper_ping_logs").insert({
-    project_id: project.id,
-    user_id: project.user_id,
-    status,
-    source,
-    latency_ms: result.latencyMs ?? null,
-    http_status: result.httpStatus ?? null,
-    error_message: result.error ?? null
-  });
+  await sql`
+    insert into keeper_ping_logs (
+      project_id,
+      user_id,
+      status,
+      source,
+      latency_ms,
+      http_status,
+      error_message
+    )
+    values (
+      ${project.id},
+      ${project.user_id},
+      ${status},
+      ${source},
+      ${result.latencyMs ?? null},
+      ${result.httpStatus ?? null},
+      ${result.error ?? null}
+    )
+  `;
 
-  if (logError) throw new Error("Falha ao registrar o histórico do ping.");
-
-  const changes = {
-    last_status: status,
-    last_ping_at: now,
-    last_latency_ms: result.latencyMs ?? null,
-    last_http_status: result.httpStatus ?? null,
-    last_error: result.error ?? null,
-    consecutive_failures: result.ok ? 0 : (project.consecutive_failures || 0) + 1,
-    updated_at: now
-  };
-
-  if (result.ok) changes.last_success_at = now;
-
-  const { error: updateError } = await admin
-    .from("keeper_projects")
-    .update(changes)
-    .eq("id", project.id);
-
-  if (updateError) throw new Error("Falha ao atualizar o status do projeto.");
+  if (result.ok) {
+    await sql`
+      update keeper_projects
+      set
+        last_status = ${status},
+        last_ping_at = now(),
+        last_success_at = now(),
+        last_latency_ms = ${result.latencyMs ?? null},
+        last_http_status = ${result.httpStatus ?? null},
+        last_error = null,
+        consecutive_failures = 0,
+        updated_at = now()
+      where id = ${project.id}
+    `;
+  } else {
+    await sql`
+      update keeper_projects
+      set
+        last_status = ${status},
+        last_ping_at = now(),
+        last_latency_ms = ${result.latencyMs ?? null},
+        last_http_status = ${result.httpStatus ?? null},
+        last_error = ${result.error ?? null},
+        consecutive_failures = ${failures},
+        updated_at = now()
+      where id = ${project.id}
+    `;
+  }
 }
 
 export async function pingAndRecord(project, source = "manual") {
@@ -102,22 +140,20 @@ export async function pingAndRecord(project, source = "manual") {
 }
 
 export async function runScheduledKeepAlive() {
-  const admin = getAdminClient();
-  const { data: projects, error } = await admin
-    .from("keeper_projects")
-    .select("*")
-    .eq("enabled", true)
-    .order("created_at", { ascending: true });
-
-  if (error) throw new Error("Falha ao carregar os projetos ativos.");
+  const sql = db();
+  const projects = await sql`
+    select *
+    from keeper_projects
+    where enabled = true
+    order by created_at asc
+  `;
 
   let online = 0;
   let failed = 0;
-  const list = projects || [];
   const concurrency = 4;
 
-  for (let index = 0; index < list.length; index += concurrency) {
-    const chunk = list.slice(index, index + concurrency);
+  for (let index = 0; index < projects.length; index += concurrency) {
+    const chunk = projects.slice(index, index + concurrency);
 
     await Promise.all(
       chunk.map(async (project) => {
@@ -132,11 +168,13 @@ export async function runScheduledKeepAlive() {
     );
   }
 
-  const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  await admin.from("keeper_ping_logs").delete().lt("created_at", cutoff);
+  await sql`
+    delete from keeper_ping_logs
+    where created_at < now() - interval '90 days'
+  `;
 
   return {
-    total: list.length,
+    total: projects.length,
     online,
     failed
   };
