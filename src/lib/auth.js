@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { getAdminClient } from "@/lib/supabase-admin";
+import { db } from "@/lib/db";
 import { hashPassword, randomToken, sha256, verifyPassword } from "@/lib/crypto";
 import { requiredEnv } from "@/lib/env";
 
@@ -18,15 +18,12 @@ async function setSession(userId) {
   const token = randomToken(32);
   const tokenHash = sha256(token);
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  const sql = db();
 
-  const admin = getAdminClient();
-  const { error } = await admin.from("keeper_sessions").insert({
-    user_id: userId,
-    token_hash: tokenHash,
-    expires_at: expiresAt.toISOString()
-  });
-
-  if (error) throw new Error("Não foi possível criar a sessão.");
+  await sql`
+    insert into keeper_sessions (user_id, token_hash, expires_at)
+    values (${userId}, ${tokenHash}, ${expiresAt.toISOString()})
+  `;
 
   const store = await cookies();
   store.set(SESSION_COOKIE, token, {
@@ -50,51 +47,59 @@ export async function registerUser({ email, password, signupCode }) {
     throw new Error("A senha precisa ter pelo menos 12 caracteres.");
   }
 
-  const admin = getAdminClient();
-  const { data: existing } = await admin
-    .from("keeper_users")
-    .select("id")
-    .eq("email", normalized)
-    .maybeSingle();
+  const sql = db();
+  const existing = await sql`
+    select id
+    from keeper_users
+    where email = ${normalized}
+    limit 1
+  `;
 
-  if (existing) throw new Error("Já existe uma conta com este e-mail.");
+  if (existing.length) throw new Error("Já existe uma conta com este e-mail.");
 
   const { salt, hash } = await hashPassword(password);
-  const { data, error } = await admin
-    .from("keeper_users")
-    .insert({
-      email: normalized,
-      password_hash: hash,
-      password_salt: salt
-    })
-    .select("id,email")
-    .single();
 
-  if (error) throw new Error("Não foi possível criar a conta.");
+  let rows;
+  try {
+    rows = await sql`
+      insert into keeper_users (email, password_hash, password_salt)
+      values (${normalized}, ${hash}, ${salt})
+      returning id, email
+    `;
+  } catch (error) {
+    if (error?.code === "23505") {
+      throw new Error("Já existe uma conta com este e-mail.");
+    }
+    throw new Error("Não foi possível criar a conta.");
+  }
 
-  await setSession(data.id);
-  return data;
+  const user = rows[0];
+  await setSession(user.id);
+  return user;
 }
 
 export async function loginUser({ email, password }) {
   const normalized = normalizeEmail(email);
-  const admin = getAdminClient();
+  const sql = db();
 
-  const { data: user } = await admin
-    .from("keeper_users")
-    .select("id,email,password_hash,password_salt")
-    .eq("email", normalized)
-    .maybeSingle();
+  const rows = await sql`
+    select id, email, password_hash, password_salt
+    from keeper_users
+    where email = ${normalized}
+    limit 1
+  `;
 
+  const user = rows[0];
   if (!user) throw new Error("E-mail ou senha inválidos.");
 
   const valid = await verifyPassword(password || "", user.password_salt, user.password_hash);
   if (!valid) throw new Error("E-mail ou senha inválidos.");
 
-  await admin
-    .from("keeper_users")
-    .update({ last_login_at: new Date().toISOString() })
-    .eq("id", user.id);
+  await sql`
+    update keeper_users
+    set last_login_at = now()
+    where id = ${user.id}
+  `;
 
   await setSession(user.id);
   return { id: user.id, email: user.email };
@@ -105,8 +110,11 @@ export async function logoutUser() {
   const token = store.get(SESSION_COOKIE)?.value;
 
   if (token) {
-    const admin = getAdminClient();
-    await admin.from("keeper_sessions").delete().eq("token_hash", sha256(token));
+    const sql = db();
+    await sql`
+      delete from keeper_sessions
+      where token_hash = ${sha256(token)}
+    `;
   }
 
   store.delete(SESSION_COOKIE);
@@ -117,25 +125,31 @@ export async function getCurrentUser() {
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
-  const admin = getAdminClient();
-  const now = new Date().toISOString();
+  const sql = db();
+  const tokenHash = sha256(token);
 
-  const { data: session } = await admin
-    .from("keeper_sessions")
-    .select("id,user_id,expires_at")
-    .eq("token_hash", sha256(token))
-    .gt("expires_at", now)
-    .maybeSingle();
+  const rows = await sql`
+    select
+      u.id,
+      u.email,
+      u.created_at,
+      u.last_login_at
+    from keeper_sessions s
+    join keeper_users u on u.id = s.user_id
+    where s.token_hash = ${tokenHash}
+      and s.expires_at > now()
+    limit 1
+  `;
 
-  if (!session) {
-    return null;
+  const user = rows[0] || null;
+
+  if (user) {
+    await sql`
+      update keeper_sessions
+      set last_seen_at = now()
+      where token_hash = ${tokenHash}
+    `;
   }
 
-  const { data: user } = await admin
-    .from("keeper_users")
-    .select("id,email,created_at,last_login_at")
-    .eq("id", session.user_id)
-    .maybeSingle();
-
-  return user || null;
+  return user;
 }
