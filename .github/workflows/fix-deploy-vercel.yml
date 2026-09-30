@@ -1,0 +1,50 @@
+name: Fix and deploy Vercel
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Link project
+        run: vercel link --yes --project supabase-keeper --scope luccaaraujo17s-projects --token="$VERCEL_TOKEN"
+
+      - name: Fix project settings
+        run: vercel project update supabase-keeper --framework nextjs --auto-detect output-directory --token="$VERCEL_TOKEN"
+
+      - name: Pull project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
