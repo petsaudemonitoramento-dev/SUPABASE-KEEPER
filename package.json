@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:setup": "node scripts/setup-neon-db.mjs"
   },
   "dependencies": {
     "@neon/config": "1.8.2",
