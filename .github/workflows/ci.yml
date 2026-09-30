@@ -45,6 +45,36 @@ jobs:
         run: |
           echo "Build outcome: ${{ steps.build.outcome }}"
 
-# O build usa continue-on-error para evitar e-mails repetitivos de falha.
-# A validação é inspecionada durante o desenvolvimento; o keep-alive de produção
-# não depende deste workflow.
+  sync-lockfile:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Download lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: package-lock
+          path: .
+
+      - name: Commit lockfile when changed
+        run: |
+          if [ -z "$(git status --porcelain -- package-lock.json)" ]; then
+            echo "package-lock.json already up to date"
+            exit 0
+          fi
+          git config user.name "supabase-keeper-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "chore: sync package lock"
+          git push
+
+# Falhas do build não geram uma rotina de alerta do Keeper.
+# O keep-alive de produção roda na Vercel e registra falhas somente no painel.
