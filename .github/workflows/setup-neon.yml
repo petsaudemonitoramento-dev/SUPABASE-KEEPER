@@ -1,0 +1,48 @@
+name: Setup Neon
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup-neon:
+    runs-on: ubuntu-latest
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: "npm"
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Install Neon CLI
+        run: npm i -g neon@latest
+
+      - name: Verify Neon secret
+        run: |
+          if [ -z "$NEON_API_KEY" ]; then
+            echo "NEON_API_KEY is not configured in GitHub Actions secrets."
+            exit 1
+          fi
+
+      - name: Link production branch
+        run: neon link --project-id spring-flower-77969329 --branch production -y
+
+      - name: Apply neon.ts
+        run: neon deploy
+
+      - name: Pull Postgres environment
+        run: neon env pull --service postgres
+
+      - name: Create and verify Keeper schema
+        run: node --env-file=.env.local scripts/setup-neon-db.mjs
