@@ -1,0 +1,73 @@
+name: Bootstrap personal Vercel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      KEEPER_SIGNUP_CODE: ${{ secrets.KEEPER_SIGNUP_CODE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.19.0"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install CLIs
+        run: |
+          npm i -g neon@latest
+          npm i -g vercel@latest
+
+      - name: Verify required secrets
+        run: |
+          test -n "$NEON_API_KEY" || (echo "Missing NEON_API_KEY" && exit 1)
+          test -n "$VERCEL_TOKEN" || (echo "Missing VERCEL_TOKEN" && exit 1)
+          test -n "$KEEPER_SIGNUP_CODE" || (echo "Missing KEEPER_SIGNUP_CODE" && exit 1)
+
+      - name: Pull Neon production connection
+        run: |
+          neon link --project-id spring-flower-77969329 --branch production -y
+          neon env pull --service postgres
+          test -f .env.local
+
+      - name: Link personal Vercel project
+        run: |
+          vercel link --yes --project supabase-keeper --scope luccaaraujo17s-projects --token="$VERCEL_TOKEN"
+
+      - name: Provision production environment
+        shell: bash
+        run: |
+          set -a
+          source .env.local
+          set +a
+
+          KEEPER_ENCRYPTION_KEY="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")"
+          CRON_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64url'))")"
+
+          printf '%s' "$DATABASE_URL" | vercel env add DATABASE_URL production --sensitive --token="$VERCEL_TOKEN"
+          printf '%s' "$KEEPER_ENCRYPTION_KEY" | vercel env add KEEPER_ENCRYPTION_KEY production --sensitive --token="$VERCEL_TOKEN"
+          printf '%s' "$KEEPER_SIGNUP_CODE" | vercel env add KEEPER_SIGNUP_CODE production --sensitive --token="$VERCEL_TOKEN"
+          printf '%s' "$CRON_SECRET" | vercel env add CRON_SECRET production --sensitive --token="$VERCEL_TOKEN"
+
+      - name: Pull Vercel production configuration
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy production
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
