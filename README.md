@@ -2,11 +2,34 @@
 
 Painel leve para manter projetos Supabase Free ativos com requisições mínimas ao banco e acompanhar tudo em um único lugar.
 
+## Arquitetura
+
+O Keeper é independente dos GitHubs e das contas Supabase dos projetos monitorados.
+
+```text
+Vercel
+├── Next.js (painel)
+├── Cron 08:17 America/Fortaleza
+└── Cron 20:17 America/Fortaleza
+        │
+        ▼
+Neon Postgres
+├── usuários do Keeper
+├── sessões
+├── projetos cadastrados
+└── histórico de pings
+        │
+        ├── Supabase A (qualquer conta)
+        ├── Supabase B (qualquer organização)
+        └── Supabase C (GitHub/GitLab/sem repositório)
+```
+
+O antigo uso do `dashboard-v3` como banco central foi removido. O Keeper agora usa um PostgreSQL separado no Neon.
+
 ## O que esta versão faz
 
 - cadastro de projetos Supabase de contas e organizações diferentes;
-- não depende do GitHub onde o projeto original está hospedado;
-- login próprio do Keeper, separado do Auth dos outros sistemas;
+- login próprio do Keeper;
 - Publishable Keys criptografadas em repouso com AES-256-GCM;
 - teste manual de conexão;
 - ativar/pausar o keep-alive por projeto;
@@ -16,102 +39,106 @@ Painel leve para manter projetos Supabase Free ativos com requisições mínimas
 - nenhum envio de e-mail, Slack, push ou webhook de erro;
 - um projeto com erro não interrompe os demais.
 
-O Supabase considera projetos Free com pouca atividade candidatos a pausa. A documentação atual informa que algumas requisições de usuário ao banco por dia normalmente são suficientes, mas não publica um limite exato garantido.
+## Neon
 
-## Arquitetura
+Projeto vinculado:
 
 ```text
-Vercel
-├── Next.js (painel)
-├── Cron 08:17 America/Fortaleza
-└── Cron 20:17 America/Fortaleza
-        │
-        ▼
-Supabase central do Keeper
-        │
-        ├── projetos cadastrados
-        ├── credenciais criptografadas
-        └── histórico
-        │
-        ├── Supabase A (qualquer conta)
-        ├── Supabase B (qualquer organização)
-        └── Supabase C (sem relação com o GitHub do Keeper)
+project-id: spring-flower-77969329
+branch: production
 ```
 
-Os horários do `vercel.json` estão em UTC: 11:17 e 23:17, equivalentes a 08:17 e 20:17 em America/Fortaleza.
+A configuração de infraestrutura fica em `neon.ts`:
 
-## Banco central já preparado
+```ts
+import { defineConfig } from "@neon/config/v1";
 
-Nesta instalação, o control plane já foi criado no projeto Supabase `dashboard-v3`.
-
-O schema reproduzível está em:
-
-```text
-supabase/migrations/20260930160000_create_keeper_schema.sql
+export default defineConfig({});
 ```
 
-As tabelas do Keeper não são acessíveis por `anon` ou `authenticated`. O acesso ocorre somente pelo backend com uma Secret Key do projeto central.
-
-## Deploy na Vercel
-
-Importe este repositório na Vercel e configure estas variáveis:
+O schema do banco do Keeper está em:
 
 ```text
-SUPABASE_URL=https://nyexakdyxtstcyycmlng.supabase.co
-SUPABASE_SECRET_KEY=sb_secret_...
+neon/schema.sql
+```
+
+O contexto local criado por `neon link` fica em `.neon` e não é versionado. A connection string fica em `.env.local`/variáveis de ambiente e também não é versionada.
+
+## Variáveis de ambiente
+
+Na Vercel, o Keeper precisa apenas de:
+
+```text
+DATABASE_URL=postgresql://...
 KEEPER_ENCRYPTION_KEY=...
 KEEPER_SIGNUP_CODE=...
 CRON_SECRET=...
 ```
 
-### SUPABASE_SECRET_KEY
+### DATABASE_URL
 
-No projeto `dashboard-v3`:
-
-```text
-Supabase Dashboard
-→ Settings
-→ API Keys
-→ Secret key
-```
-
-Use uma Secret Key moderna (`sb_secret_...`) e nunca coloque esse valor no GitHub.
+Use a connection string da branch `production` do projeto Neon. O backend acessa o Neon diretamente com `@neondatabase/serverless`.
 
 ### KEEPER_ENCRYPTION_KEY
 
-Gere localmente:
+Gere uma chave de 32 bytes:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-Não troque esta chave depois de cadastrar projetos sem antes migrar as credenciais; ela é usada para descriptografar as Publishable Keys salvas.
+Não altere esta chave depois de cadastrar projetos sem antes migrar as credenciais.
 
 ### KEEPER_SIGNUP_CODE
 
-Defina uma frase ou token longo. Para criar uma conta no Keeper, o usuário precisa informar esse código.
-
-Depois de criar sua conta, você pode trocar o valor na Vercel para bloquear cadastros com o código antigo.
+Código privado necessário para criar uma conta no Keeper.
 
 ### CRON_SECRET
 
-Gere outro token aleatório, por exemplo:
+Gere outro token aleatório:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-A Vercel usa `CRON_SECRET` para autenticar as chamadas dos Cron Jobs.
+## Setup local com Neon CLI
+
+```bash
+npm i -g neon@latest
+neon login
+neon skills -y
+neon mcp -y
+neon link --project-id spring-flower-77969329 --branch production -y
+neon config init
+neon deploy
+```
+
+Depois de `neon config init`, mantenha o conteúdo de `neon.ts` deste repositório.
+
+`neon link` também puxa as variáveis da branch, incluindo `DATABASE_URL`, para o ambiente local.
+
+## Preparar o banco Neon
+
+Execute uma única vez o conteúdo de `neon/schema.sql` na branch `production`. Ele cria:
+
+```text
+keeper_users
+keeper_sessions
+keeper_projects
+keeper_ping_logs
+```
+
+Essas tabelas guardam apenas dados do próprio Keeper. Nenhum dado de negócio dos projetos Supabase monitorados é copiado para o Neon.
 
 ## Preparar cada Supabase monitorado
 
-Em cada projeto que será cadastrado, execute uma única vez o conteúdo de:
+Em cada projeto cadastrado, execute uma única vez:
 
 ```text
 supabase/target-setup.sql
 ```
 
-SQL:
+A função criada é mínima:
 
 ```sql
 create or replace function public.keeper_ping()
@@ -128,53 +155,32 @@ revoke all on function public.keeper_ping() from public;
 grant execute on function public.keeper_ping() to anon, authenticated;
 ```
 
-O ping chama:
+O Keeper chama:
 
 ```text
 POST /rest/v1/rpc/keeper_ping
 ```
 
-Essa função não lê tabela, não insere nada e não altera dados. O trabalho no PostgreSQL é essencialmente:
-
-```sql
-select true;
-```
-
-## Credencial do projeto monitorado
-
-Cadastre somente:
-
-- nome;
-- Project URL;
-- Publishable Key (`sb_publishable_...`) ou `anon` legada.
-
-Não use:
-
-- senha do banco;
-- Access Token da conta;
-- `service_role`;
-- Secret Key (`sb_secret_...`).
-
-## Modo silencioso
-
-O Keeper não possui integração de e-mail.
-
-Falhas individuais são persistidas em `keeper_ping_logs` e o ciclo continua. A rota de cron retorna sucesso ao scheduler mesmo quando um projeto monitorado falha, evitando transformar uma indisponibilidade de destino em uma sequência de alertas externos.
+A função não lê ou altera tabelas do projeto monitorado.
 
 ## Segurança
 
-- backend central usa Secret Key somente no servidor;
-- nenhuma Secret Key vai para o browser;
-- chaves dos projetos monitorados são criptografadas com AES-256-GCM;
-- URL cadastrada é restrita a `https://*.supabase.co`, reduzindo risco de SSRF;
-- sessões são tokens aleatórios; no banco é armazenado apenas o SHA-256 do token;
-- senhas do Keeper são derivadas com `scrypt` e salt aleatório;
-- as tabelas do Keeper possuem RLS e acesso direto revogado;
-- a função de destino usa `SECURITY INVOKER`.
+- a `DATABASE_URL` do Neon existe apenas no backend;
+- Publishable Keys dos Supabases monitorados são criptografadas com AES-256-GCM;
+- nenhuma chave descriptografada é enviada ao browser;
+- URL cadastrada é restrita a `https://*.supabase.co`;
+- tokens de sessão são aleatórios e apenas o SHA-256 do token é armazenado;
+- senhas do Keeper usam `scrypt` com salt aleatório;
+- o endpoint de ping dos Supabases usa `SECURITY INVOKER`;
+- não são usadas senhas de banco, `service_role` ou Secret Keys dos Supabases monitorados.
 
-## Desenvolvimento local
+## Modo silencioso
 
-Crie `.env.local` a partir de `.env.example`, depois:
+O Keeper não envia notificações de erro.
+
+Se um projeto falhar, o erro é salvo em `keeper_ping_logs` e exibido apenas no painel. Os demais projetos continuam sendo processados.
+
+## Desenvolvimento
 
 ```bash
 npm install
@@ -182,7 +188,3 @@ npm run dev
 ```
 
 Abra `http://localhost:3000`.
-
-## Observação sobre o Supabase Free
-
-O Supabase não fornece uma promessa de que exatamente duas consultas por dia impedirão pausa em todos os casos. O Keeper usa dois ciclos diários porque é um volume muito pequeno e coerente com a orientação de gerar atividade regular no banco. Se a política do Supabase mudar, a frequência pode ser ajustada no `vercel.json`.
