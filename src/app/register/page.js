@@ -36,8 +36,8 @@ export default async function RegisterPage({ searchParams }) {
           </label>
           <label>
             <span>Senha</span>
-            <input name="password" type="password" minLength="12" autoComplete="new-password" required />
-            <small>Mínimo de 12 caracteres.</small>
+            <input name="password" type="password" minLength="8" autoComplete="new-password" required />
+            <small>Mínimo de 8 caracteres.</small>
           </label>
           <label>
             <span>Código de convite</span>
