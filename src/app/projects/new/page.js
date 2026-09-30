@@ -1,8 +1,22 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/app-shell";
+import CopyButton from "@/components/copy-button";
 import { createProjectAction } from "@/app/actions";
 import { getCurrentUser } from "@/lib/auth";
+
+const TARGET_SQL = `create or replace function public.keeper_ping()
+returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $$
+  select true;
+$$;
+
+revoke all on function public.keeper_ping() from public;
+grant execute on function public.keeper_ping() to anon, authenticated;`;
 
 export default async function NewProjectPage({ searchParams }) {
   const user = await getCurrentUser();
@@ -17,12 +31,13 @@ export default async function NewProjectPage({ searchParams }) {
           <Link className="back-link" href="/dashboard">← Voltar</Link>
           <p className="eyebrow">Novo projeto</p>
           <h1>Cadastrar Supabase</h1>
-          <p>O repositório GitHub do projeto não importa. O Keeper acessa apenas a API do Supabase.</p>
+          <p>Primeiro instale a função de keep-alive no Supabase. Depois cadastre e teste.</p>
         </div>
       </section>
 
       <div className="content-grid">
         <section className="panel">
+          <p className="eyebrow">Passo 2</p>
           <h2>Dados do projeto</h2>
 
           {query?.error ? <div className="alert alert-error">{query.error}</div> : null}
@@ -60,24 +75,30 @@ export default async function NewProjectPage({ searchParams }) {
             </label>
 
             <button className="button button-primary" type="submit">
-              Cadastrar e testar
+              Já instalei o SQL — cadastrar e testar
             </button>
           </form>
         </section>
 
         <aside className="panel panel-muted">
-          <p className="eyebrow">Como funciona</p>
-          <h2>Sem vínculo com GitHub</h2>
-          <p>
-            O código do seu projeto pode estar em outra conta, organização, GitLab ou nem existir.
-            Para o Keeper, cada banco é apenas um endpoint Supabase independente.
-          </p>
-          <div className="mini-flow">
-            <span>Keeper</span><b>→</b><span>REST/RPC</span><b>→</b><span>Postgres</span>
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Passo 1</p>
+              <h2>Instalar keeper_ping()</h2>
+            </div>
+            <CopyButton text={TARGET_SQL} />
           </div>
+
+          <p>
+            Antes de cadastrar, abra o <strong>SQL Editor</strong> do Supabase que será monitorado,
+            cole este SQL e execute uma vez.
+          </p>
+
+          <pre className="code-block"><code>{TARGET_SQL}</code></pre>
+
           <p className="muted-text">
-            Após cadastrar, a página de detalhes mostra o SQL de instalação da função
-            <code> keeper_ping()</code>. Ela executa somente <code>select true</code>.
+            A função usa <strong>SECURITY INVOKER</strong>, não lê nenhuma tabela e retorna apenas
+            <code> true</code>. Depois volte aqui e clique em cadastrar e testar.
           </p>
         </aside>
       </div>
