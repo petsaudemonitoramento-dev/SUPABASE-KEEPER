@@ -820,3 +820,31 @@ tbody tr:last-child td {
   .latency-chart {gap: 5px;}
   .latency-number {font-size:.60rem;}
 }
+
+
+/* Reports for each batch of three HTTP probes. No external chart dependency. */
+.visual-report { width: 100%; overflow: hidden; }
+.trend-svg { width: 100%; height: auto; min-height: 170px; display: block; }
+.graph-legend { display:flex; flex-wrap:wrap; align-items:center; gap:18px; margin:14px 0 8px; }
+.graph-legend span { display:inline-flex; align-items:center; gap:7px; color:var(--text); font-size:.85rem; font-weight:650; }
+.graph-legend i { display:inline-block; width:11px; height:11px; border-radius:50%; }
+.graph-legend small { color:var(--muted); font-weight:400; }
+.period-selector { display:flex; gap:4px; border:1px solid var(--border); border-radius:11px; padding:4px; background:var(--panel-soft); }
+.period-selector a { padding:7px 11px; font-weight:750; font-size:.79rem; color:var(--muted); border-radius:7px; }
+.period-selector a.period-active { background:var(--primary); color:#fff; }
+.probe-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:13px; }
+.probe-card { border:1px solid var(--border); border-radius:14px; padding:18px; min-width:0; background:var(--panel-soft); }
+.probe-card span { font-size:.75rem; color:var(--muted); display:block; margin-bottom:9px; font-weight:750; }
+.probe-card strong { font-size:clamp(1.2rem, 2.5vw, 1.8rem); letter-spacing:-.04em; }
+.probe-card small { color:var(--muted); display:block; margin-top:9px; }
+.probe-track { height:10px; background:var(--primary-soft); border-radius:8px; margin-top:13px; overflow:hidden; }
+.probe-fill { height:100%; border-radius:8px; }
+.probe-good { background:#0e9680; }
+.probe-bad { background:#b42318; }
+.round-summary { display:flex; gap:22px; flex-wrap:wrap; padding-top:18px; font-size:.84rem; color:var(--muted); }
+.round-summary strong { color:var(--text); }
+@media (max-width:640px) {
+  .probe-grid { grid-template-columns:1fr; }
+  .period-selector { width:fit-content; }
+  .trend-svg { min-height:160px; }
+}

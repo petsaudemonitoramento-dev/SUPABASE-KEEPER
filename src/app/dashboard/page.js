@@ -2,27 +2,36 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/app-shell";
 import StatusPill from "@/components/status-pill";
+import { TimelineGraph } from "@/components/site-graphs";
 import { pingProjectAction, toggleProjectAction, pingSiteAction, toggleSiteAction } from "@/app/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatLatency, projectRefFromUrl } from "@/lib/format";
 import { getProjectsForUser } from "@/lib/keeper";
-import { getSitesForUser, getProjectStatsForUser, getSiteStatsForUser, siteProbePath } from "@/lib/sites";
+import { getSitesForUser, getProjectStatsForUser, getSiteStatsForUser, getSitesTrendForUser, siteProbePath } from "@/lib/sites";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function DashboardPage({ searchParams }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [projects, sites, dbStats, siteStats] = await Promise.all([
+  const query = await searchParams;
+  const days = query?.period === "30" ? 30 : 7;
+  const [projects, sites, dbStats, siteStats, siteTrend] = await Promise.all([
     getProjectsForUser(user.id),
     getSitesForUser(user.id),
     getProjectStatsForUser(user.id),
-    getSiteStatsForUser(user.id)
+    getSiteStatsForUser(user.id),
+    getSitesTrendForUser(user.id, days)
   ]);
   const dbStatById = new Map(dbStats.map(item => [item.project_id, item]));
   const siteStatById = new Map(siteStats.map(item => [item.site_id, item]));
-  const query = await searchParams;
+  const graphSeries = sites.map(site => ({
+    name: site.name,
+    readings: siteTrend.filter(item => item.site_id === site.id && item.median_ms !== null)
+      .map(item => ({ at: item.created_at, ms: item.median_ms }))
+  }));
 
   const active = projects.filter((project) => project.enabled);
   const online = active.filter((project) => project.last_status === "online").length;
@@ -35,7 +44,7 @@ export default async function DashboardPage({ searchParams }) {
           <p className="eyebrow">Visão geral</p>
           <h1>Projetos monitorados</h1>
           <p>
-            Bancos Supabase e sites Vercel separados, com duas verificações automáticas por dia.
+            Bancos Supabase e sites Vercel separados. Sites: 2 rodadas automáticas por dia, com 3 testes por rodada.
           </p>
         </div>
         <Link className="button button-primary" href="/projects/new">
@@ -178,17 +187,17 @@ export default async function DashboardPage({ searchParams }) {
                   </div>
                   <div className="project-stats">
                     <div><span>Último teste</span><strong>{formatDate(site.last_check_at)}</strong></div>
-                    <div><span>Latência</span><strong>{formatLatency(site.last_latency_ms)}</strong></div>
-                    <div><span>Média 7 dias</span><strong>{formatLatency(stats?.avg_latency_ms)}</strong></div>
-                    <div><span>Disponibilidade 7 dias</span><strong>{
+                    <div><span>Mediana da última rodada</span><strong>{formatLatency(siteStatById.get(site.id)?.checks ? site.last_latency_ms : null)}</strong></div>
+                    <div><span>Média das medianas · 7 dias</span><strong>{formatLatency(stats?.avg_latency_ms)}</strong></div>
+                    <div><span>Disponibilidade observada · 7 dias</span><strong>{
                       stats?.checks ? ((stats.successful / stats.checks) * 100).toFixed(1) + "%" : "—"
-                    }</strong></div>
+                    }</strong><small>{stats?.checks || 0} rodadas</small></div>
                   </div>
                 </div>
                 <div className="project-actions">
                   <form action={pingSiteAction}>
                     <input type="hidden" name="site_id" value={site.id}/>
-                    <button className="button button-secondary button-small">Testar agora</button>
+                    <button className="button button-secondary button-small">Testar agora · 3x</button>
                   </form>
                   <form action={toggleSiteAction}>
                     <input type="hidden" name="site_id" value={site.id}/>
@@ -203,8 +212,22 @@ export default async function DashboardPage({ searchParams }) {
       )}
       <p className="muted-text" style={{marginTop: 12}}>
         MAE APS e Gestário utilizam uma rota pública de saúde com resposta JSON validada. Redirecionamentos nessa rota aparecem como Protegido. Outros sites ainda podem usar a verificação da raiz.
-        Os percentuais representam apenas os testes observados nos últimos sete dias.
+        As taxas de disponibilidade representam somente rodadas observadas (pelo menos 2 de 3 respostas saudáveis); histórico de testes únicos permanece separado.
       </p>
+
+      <section className="panel history-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Comparativo Vercel</p>
+            <h2>Evolução da mediana por rodada</h2>
+          </div>
+          <div className="period-selector">
+            <Link href="/dashboard?period=7" className={days === 7 ? "period-active" : ""}>7 dias</Link>
+            <Link href="/dashboard?period=30" className={days === 30 ? "period-active" : ""}>30 dias</Link>
+          </div>
+        </div>
+        <TimelineGraph days={days} series={graphSeries}/>
+      </section>
 
       <section className="quiet-note">
         <strong>Modo silencioso</strong>

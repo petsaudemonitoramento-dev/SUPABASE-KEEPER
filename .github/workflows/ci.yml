@@ -27,9 +27,11 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts
 
+      - name: Site round unit tests
+        run: npm run test:site-rounds
+
       - name: Build
         id: build
-        continue-on-error: true
         run: npm run build
 
       - name: Save generated lockfile

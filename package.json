@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "db:setup": "node scripts/setup-neon-db.mjs"
+    "db:setup": "node scripts/setup-neon-db.mjs",
+    "test:site-rounds": "node --test tests/site-rounds.test.mjs"
   },
   "dependencies": {
     "@neon/config": "1.8.2",
