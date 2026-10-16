@@ -10,6 +10,7 @@ import { getProjectsForUser } from "@/lib/keeper";
 import { getSitesForUser, getProjectStatsForUser, getSiteStatsForUser, getSitesTrendForUser, siteProbePath } from "@/lib/sites";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default async function DashboardPage({ searchParams }) {
   const user = await getCurrentUser();
