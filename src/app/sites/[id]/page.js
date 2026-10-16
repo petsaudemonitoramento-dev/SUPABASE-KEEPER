@@ -6,7 +6,7 @@ import { pingSiteAction, toggleSiteAction } from "@/app/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatLatency } from "@/lib/format";
 import {
-  getSiteForUser, getSiteLogsForUser, getSiteStatsForUser, getSiteDailyStatsForUser
+  getSiteForUser, getSiteLogsForUser, getSiteStatsForUser, getSiteDailyStatsForUser, siteProbePath
 } from "@/lib/sites";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ export default async function SiteDetailPage({ params }) {
             <h1>{site.name}</h1>
             <StatusPill status={site.last_status} enabled={site.enabled} />
           </div>
-          <p className="mono-url">{site.site_url}</p>
+          <p className="mono-url">{site.site_url}{siteProbePath(site.site_url)} — GET sem login</p>
         </div>
         <div className="header-actions">
           <form action={pingSiteAction}>
@@ -109,7 +109,7 @@ export default async function SiteDetailPage({ params }) {
             <h2>Últimas 40 verificações</h2>
           </div>
         </div>
-        <p className="muted-text">HTTP 2xx/3xx indica entrada acessível; HTTP 401/403 indica proteção e não significa que o site caiu. O teste não acessa áreas restritas.</p>
+        <p className="muted-text">Para MAE APS e Gestário, somente HTTP 200 com JSON de saúde válido conta como Online. Redirecionamentos ou bloqueios aparecem como Protegido. O teste não acessa áreas restritas nem verifica o carregamento visual.</p>
         {logs.length ? (
           <div className="table-wrap">
             <table>
