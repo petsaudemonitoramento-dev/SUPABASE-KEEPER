@@ -15,7 +15,7 @@ export default async function NewSitePage({ searchParams }) {
           <Link href="/dashboard" className="back-link">← Voltar ao painel</Link>
           <p className="eyebrow">Monitoramento leve de sites</p>
           <h1>Adicionar site Vercel</h1>
-          <p>Verificamos apenas a entrada HTTPS pública, sem login, dados pessoais ou recursos restritos.</p>
+          <p>Monitoramos somente a entrada HTTPS pública, com três medições por rodada, duas vezes ao dia, sem login ou dados pessoais.</p>
         </div>
       </section>
       <section className="panel" style={{ maxWidth: 650 }}>
