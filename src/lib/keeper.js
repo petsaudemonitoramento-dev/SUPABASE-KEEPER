@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { decryptValue } from "@/lib/crypto";
 import { pingSupabase } from "@/lib/ping";
+import { runScheduledSites } from "@/lib/sites";
 
 export async function getProjectsForUser(userId) {
   const sql = db();
@@ -173,9 +174,18 @@ export async function runScheduledKeepAlive() {
     where created_at < now() - interval '90 days'
   `;
 
+  let sites = { total: 0, online: 0, protected: 0, failed: 0 };
+  try {
+    sites = await runScheduledSites();
+  } catch (error) {
+    console.error("keeper site checks failed", error instanceof Error ? error.message : "unknown");
+    sites = { ...sites, schedulerError: true };
+  }
+
   return {
     total: projects.length,
     online,
-    failed
+    failed,
+    sites
   };
 }
