@@ -29,15 +29,16 @@ try {
         'keeper_projects',
         'keeper_ping_logs',
         'keeper_sites',
-        'keeper_site_logs'
+        'keeper_site_logs',
+        'keeper_site_rounds'
       )
     order by table_name
   `);
 
   const names = result.rows.map((row) => row.table_name);
 
-  if (names.length !== 6) {
-    throw new Error(`Schema incompleto: foram encontradas ${names.length} de 6 tabelas.`);
+  if (names.length !== 7) {
+    throw new Error(`Schema incompleto: foram encontradas ${names.length} de 7 tabelas.`);
   }
 
   console.log("Neon Keeper schema OK:", names.join(", "));
