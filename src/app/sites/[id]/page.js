@@ -95,7 +95,7 @@ export default async function SiteDetailPage({ params }) {
                     style={{ height: item.avg_latency_ms ? Math.max(5, Math.round(Number(item.avg_latency_ms) / maxLatency * 100)) + "%" : "0%" }}
                   />
                 </div>
-                <small>{new Date(String(item.day).slice(0,10) + "T12:00:00Z").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}</small>
+                <small>{new Date(item.day).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}</small>
               </div>
             ))}
           </div>
