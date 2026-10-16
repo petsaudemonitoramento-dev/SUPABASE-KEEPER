@@ -7,6 +7,10 @@ export default function StatusPill({ status, enabled = true }) {
     return <span className="status status-online"><span />Online</span>;
   }
 
+  if (status === "protected") {
+    return <span className="status status-protected"><span />Protegido</span>;
+  }
+
   if (status === "error") {
     return <span className="status status-error"><span />Erro</span>;
   }

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, loginUser, logoutUser, registerUser } from "@/lib/auth";
 import { encryptValue } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { normalizeSiteUrl, getSiteForUser, pingAndRecordSite } from "@/lib/sites";
 import { getProjectForUser, pingAndRecord } from "@/lib/keeper";
 import {
   normalizeProjectUrl,
@@ -221,4 +222,58 @@ export async function deleteProjectAction(formData) {
 
   revalidatePath("/dashboard");
   redirect("/dashboard?deleted=1");
+}
+
+
+export async function createSiteAction(formData) {
+  const user = await requireUser();
+  let site;
+  let errorMessage;
+  try {
+    const name = validateProjectName(formData.get("name"));
+    const siteUrl = normalizeSiteUrl(formData.get("site_url"));
+    const sql = db();
+    const rows = await sql`
+      insert into keeper_sites (user_id, name, site_url)
+      values (${user.id}, ${name}, ${siteUrl})
+      returning *
+    `;
+    site = rows[0];
+    try { await pingAndRecordSite(site, "manual"); } catch {
+      // Keep the site registered so the next scheduled check can retry.
+    }
+  } catch (error) {
+    errorMessage = error?.code === "23505"
+      ? "Este site já está cadastrado na sua conta."
+      : messageOf(error);
+  }
+  if (errorMessage) redirect(withError("/sites/new", errorMessage));
+  revalidatePath("/dashboard");
+  redirect("/sites/" + site.id);
+}
+
+export async function pingSiteAction(formData) {
+  const user = await requireUser();
+  const siteId = String(formData.get("site_id") || "");
+  const site = await getSiteForUser(user.id, siteId);
+  if (!site) redirect("/dashboard");
+  try { await pingAndRecordSite(site, "manual"); } catch {
+    // Keep the last known status; infrastructure failures are not exposed to browsers.
+  }
+  revalidatePath("/dashboard");
+  revalidatePath("/sites/" + siteId);
+}
+
+export async function toggleSiteAction(formData) {
+  const user = await requireUser();
+  const siteId = String(formData.get("site_id") || "");
+  const site = await getSiteForUser(user.id, siteId);
+  if (!site) redirect("/dashboard");
+  const sql = db();
+  await sql`
+    update keeper_sites set enabled = ${!site.enabled}, updated_at = now()
+    where id = ${siteId} and user_id = ${user.id}
+  `;
+  revalidatePath("/dashboard");
+  revalidatePath("/sites/" + siteId);
 }
