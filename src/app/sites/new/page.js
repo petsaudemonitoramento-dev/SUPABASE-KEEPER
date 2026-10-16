@@ -4,6 +4,8 @@ import AppShell from "@/components/app-shell";
 import { createSiteAction } from "@/app/actions";
 import { getCurrentUser } from "@/lib/auth";
 
+export const maxDuration = 60;
+
 export default async function NewSitePage({ searchParams }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
