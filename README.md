@@ -188,3 +188,30 @@ npm run dev
 ```
 
 Abra `http://localhost:3000`.
+
+
+## Monitoramento seguro de sites Vercel (outubro de 2026)
+
+Os dois domínios de produção foram verificados nos projetos Vercel da equipe:
+- MAE APS: https://maeaps.vercel.app
+- Gestário APS: https://gestarioaps.vercel.app (projeto Vercel `painelprenatal`)
+
+O banco Neon guarda estes sites em `keeper_sites` e seus logs em `keeper_site_logs`.
+A migração `neon/site-monitoring.sql` é idempotente e foi aplicada ao Neon.
+Em um banco novo, basta executar `neon/schema.sql`, que também cria as tabelas de sites.
+
+Cada verificação executa um GET HTTPS na raiz do domínio Vercel aprovado, com
+`redirect: manual` e timeout de 8 segundos. Não envia cookies, chaves, dados
+pessoais ou autenticação. Não acompanha redirecionamentos nem acessa páginas internas.
+Permite apenas domínios literais `https://nome.vercel.app`, sem portas ou caminhos.
+
+As respostas HTTP 2xx e 3xx são marcadas como `online`, 401/403 como `protected`
+e outros erros como `error`. Essa métrica é a disponibilidade e latência da
+**entrada HTTP pública**; não é uma medição de carregamento completo do navegador,
+nem prova de que páginas protegidas ou bancos de dados estejam funcionando.
+
+O painel separa bancos Supabase e sites Vercel, exibe última verificação,
+média dos últimos 7 dias, disponibilidade observada e histórico por site.
+O status `protected` nunca deve ser tratado automaticamente como site caído.
+O cron original duas vezes por dia foi reaproveitado, com registros limitados
+a 90 dias; há também um botão `Testar agora`.
