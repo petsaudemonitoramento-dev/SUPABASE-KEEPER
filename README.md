@@ -215,3 +215,15 @@ média dos últimos 7 dias, disponibilidade observada e histórico por site.
 O status `protected` nunca deve ser tratado automaticamente como site caído.
 O cron original duas vezes por dia foi reaproveitado, com registros limitados
 a 90 dias; há também um botão `Testar agora`.
+
+
+### Rota de saúde rápida (2026-10-16)
+
+Para `maeaps.vercel.app` e `gestarioaps.vercel.app`, a verificação não usa mais a página inicial (que redireciona para a autenticação).
+O Keeper consulta apenas `GET /api/health/live`, com `redirect: manual` e timeout de 8 segundos.
+A resposta é válida apenas se for HTTP 200, `Content-Type: application/json` e corpo `{ "status": "ok" }`.
+Esta rota é pública e mínima, sem dependências do Supabase, sem cookies, sem dados de saúde e sem verificação de sessão. Nos dois softwares, apenas esta rota exata dispensa a chamada de claims no proxy. Todas as demais rotas mantêm suas proteções originais.
+
+O objetivo é medir somente a capacidade da aplicação de responder HTTP. O ping do banco Supabase continua um teste separado. Outros sites Vercel eventualmente cadastrados mantêm o comportamento legado de verificar a raiz; não são automaticamente considerados compatíveis com `/api/health/live`.
+
+O histórico anterior de verificações da raiz continua salvo e compõe a média dos últimos sete dias; compare os novos tempos por código HTTP e após acumular novas amostras.
