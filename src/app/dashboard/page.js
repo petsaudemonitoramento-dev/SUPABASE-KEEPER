@@ -6,7 +6,7 @@ import { pingProjectAction, toggleProjectAction, pingSiteAction, toggleSiteActio
 import { getCurrentUser } from "@/lib/auth";
 import { formatDate, formatLatency, projectRefFromUrl } from "@/lib/format";
 import { getProjectsForUser } from "@/lib/keeper";
-import { getSitesForUser, getProjectStatsForUser, getSiteStatsForUser } from "@/lib/sites";
+import { getSitesForUser, getProjectStatsForUser, getSiteStatsForUser, siteProbePath } from "@/lib/sites";
 
 export const dynamic = "force-dynamic";
 
@@ -172,6 +172,7 @@ export default async function DashboardPage({ searchParams }) {
                     <div>
                       <Link className="project-name" href={"/sites/" + site.id}>{site.name}</Link>
                       <span className="project-ref">{site.site_url}</span>
+                      <span className="project-ref" style={{display: "block", marginTop: 5}}>GET {siteProbePath(site.site_url)}</span>
                     </div>
                     <StatusPill status={site.last_status} enabled={site.enabled} />
                   </div>
@@ -201,7 +202,7 @@ export default async function DashboardPage({ searchParams }) {
         </section>
       )}
       <p className="muted-text" style={{marginTop: 12}}>
-        Redirecionamentos para login podem aparecer como online. HTTP 401/403 é exibido como Protegido, não como indisponível.
+        MAE APS e Gestário utilizam uma rota pública de saúde com resposta JSON validada. Redirecionamentos nessa rota aparecem como Protegido. Outros sites ainda podem usar a verificação da raiz.
         Os percentuais representam apenas os testes observados nos últimos sete dias.
       </p>
 

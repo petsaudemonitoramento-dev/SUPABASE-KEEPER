@@ -21,28 +21,73 @@ export function normalizeSiteUrl(value) {
   return "https://" + url.hostname;
 }
 
+// Apenas estas aplicações fornecem liveness público de contrato JSON.
+// Outros domínios Vercel cadastrados continuam usando o monitoramento legado na raiz.
+const FAST_HEALTH_HOSTS = new Set([
+  "maeaps.vercel.app",
+  "gestarioaps.vercel.app"
+]);
+
+export function siteProbePath(siteUrl) {
+  const baseUrl = normalizeSiteUrl(siteUrl);
+  const host = new URL(baseUrl).hostname;
+  return FAST_HEALTH_HOSTS.has(host) ? "/api/health/live" : "/";
+}
+
 export async function checkSite(siteUrl) {
-  const endpoint = normalizeSiteUrl(siteUrl);
+  const baseUrl = normalizeSiteUrl(siteUrl);
+  const path = siteProbePath(baseUrl);
+  const isFastHealth = path !== "/";
   const started = performance.now();
+
   try {
-    const response = await fetch(endpoint + "/", {
+    const response = await fetch(baseUrl + path, {
       method: "GET",
       cache: "no-store",
       redirect: "manual",
-      headers: { "user-agent": "supabase-keeper-site-check/1.0", accept: "text/html,application/json;q=0.9,*/*;q=0.1" },
+      headers: {
+        "user-agent": "supabase-keeper-site-check/1.1",
+        accept: isFastHealth ? "application/json" : "text/html,application/json;q=0.9,*/*;q=0.1"
+      },
       signal: AbortSignal.timeout(TIMEOUT_MS)
     });
-    const latencyMs = Math.max(0, Math.round(performance.now() - started));
+
     const httpStatus = response.status;
-    // A protected login page can legitimately redirect; never follow the Location header.
-    const status = httpStatus >= 200 && httpStatus < 400
-      ? "online"
-      : httpStatus === 401 || httpStatus === 403 ? "protected" : "error";
+    let status;
+    let error = null;
+
+    if (isFastHealth) {
+      // Verificar conteúdo evita falso "online" caso login/erro retorne HTTP 200.
+      if (httpStatus === 200) {
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.toLowerCase().includes("application/json")) {
+          status = "error";
+          error = "A rota de saúde não retornou JSON.";
+        } else {
+          const payload = await response.json().catch(() => null);
+          status = payload?.status === "ok" ? "online" : "error";
+          if (status === "error") error = "Resposta inválida da rota de saúde.";
+        }
+      } else if ([301, 302, 303, 307, 308, 401, 403].includes(httpStatus)) {
+        status = "protected";
+        error = "A rota pública de saúde está redirecionando ou exigindo autenticação.";
+      } else {
+        status = "error";
+        error = "HTTP " + httpStatus + " na rota de saúde.";
+      }
+    } else {
+      // Compatibilidade com outros sites cadastrados antes desta melhoria.
+      status = httpStatus >= 200 && httpStatus < 400
+        ? "online"
+        : httpStatus === 401 || httpStatus === 403 ? "protected" : "error";
+      if (status === "error") error = "HTTP " + httpStatus;
+    }
+
     return {
       status,
-      latencyMs,
+      latencyMs: Math.max(0, Math.round(performance.now() - started)),
       httpStatus,
-      error: status === "error" ? "HTTP " + httpStatus : null
+      error
     };
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
