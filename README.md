@@ -227,3 +227,27 @@ Esta rota é pública e mínima, sem dependências do Supabase, sem cookies, sem
 O objetivo é medir somente a capacidade da aplicação de responder HTTP. O ping do banco Supabase continua um teste separado. Outros sites Vercel eventualmente cadastrados mantêm o comportamento legado de verificar a raiz; não são automaticamente considerados compatíveis com `/api/health/live`.
 
 O histórico anterior de verificações da raiz continua salvo e compõe a média dos últimos sete dias; compare os novos tempos por código HTTP e após acumular novas amostras.
+
+
+## Rodadas de três testes e gráficos (2026-10-16)
+
+- O agendamento continua o mesmo, duas vezes por dia via `vercel.json`.
+- Para **cada site**, uma rodada faz 3 verificações HTTP sequenciais com intervalo
+  de 5 segundos entre os testes; os diferentes sites podem ser monitorados em paralelo.
+- Cada amostra mantém HTTP, latência e erro. A tabela `keeper_site_rounds` guarda
+  mediana, média, mínimo, máximo e contagem de respostas saudáveis; os 3 registros em
+  `keeper_site_logs` são identificados por `round_id` e `sample_index`.
+- A latência representativa da rodada é a mediana **das amostras bem-sucedidas**.
+  Rodadas com menos de duas respostas saudáveis são erro; se ao menos duas amostras
+  redirecionarem ou exigirem autenticação, o resultado é `protected`.
+  Duas respostas saudáveis em três são consideradas online, com o aviso 2/3.
+- O dashboard mostra comparativo dos sites em gráfico SVG, mediana recente, média
+  das medianas e disponibilidade observada; a página individual mostra o gráfico
+  de 7/30 dias, barras das 3 amostras e o histórico de rodadas.
+- Testes antigos não são migrados artificialmente para rodadas; ficam preservados.
+- Uma trava temporária de até 90 segundos por site evita concorrência entre
+  cliques manuais e execução do cron. A trava expirada é recuperável.
+- Rodadas e amostras são retidas por 90 dias. Nenhum dado protegido ou conteúdo
+  de páginas é salvo.
+- A migração incremental está em `neon/site-rounds.sql` (já aplicada à base Neon).
+- Rodar `npm run test:site-rounds` para validar os cálculos de mediana/status.
